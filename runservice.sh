@@ -9,4 +9,6 @@ bosco_start
 
 ssh-keyscan -H brown.rcac.purdue.edu >> /home/geoedf/.ssh/known_hosts
 
+# run API
 
+python api.py

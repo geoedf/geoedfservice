@@ -146,7 +146,7 @@ ADD ./config/remote.yaml /home/geoedf/.singularity/
 RUN chown -R geoedf: /home/geoedf/.singularity && \
     chmod 600 /home/geoedf/.singularity/remote.yaml
 
-RUN python3 -m pip install -U pip
+RUN python3 -m pip install -U pip && pip install flask-restful
 
 USER geoedf
 
@@ -157,6 +157,8 @@ USER geoedf
 WORKDIR /home/geoedf/
 
 ADD --chown=geoedf:geoedf runservice.sh /home/geoedf/
+
+ADD --chown=geoedf:geoedf api.py /home/geoedf/
 
 RUN chmod +x runservice.sh
 
