@@ -2,11 +2,11 @@ FROM centos:centos7
 
 RUN yum -y update | /bin/true
 
-RUN groupadd --gid 808 ec-group
-RUN useradd --gid 808 --uid 550 --create-home --password 'earthcube' earthcube
+RUN groupadd --gid 808 geoedf
+RUN useradd --gid 808 --uid 550 --create-home --password 'geoedf' geoedf
 
 # Configure Sudo
-RUN echo -e "earthcube ALL=(ALL)       NOPASSWD:ALL\n" >> /etc/sudoers
+RUN echo -e "geoedf ALL=(ALL)       NOPASSWD:ALL\n" >> /etc/sudoers
 
 # Test requirements
 RUN yum -y install epel-release
@@ -55,15 +55,8 @@ RUN yum -y install \
      yum-plugin-priorities \
      zlib-devel 
 
-# Docker + Docker in Docker setup
-RUN curl -sSL https://get.docker.com/ | sh
-ADD ./config/wrapdocker /usr/local/bin/wrapdocker
-RUN chmod +x /usr/local/bin/wrapdocker
-VOLUME /var/lib/docker
-RUN usermod -aG docker earthcube
-
 # Python packages
-RUN pip3 install tox six sphinx recommonmark sphinx_rtd_theme sphinxcontrib-openapi javasphinx jupyter
+RUN pip3 install tox six sphinx recommonmark sphinx_rtd_theme sphinxcontrib-openapi javasphinx
 
 # Set Timezone
 RUN cp /usr/share/zoneinfo/America/Indianapolis /etc/localtime
@@ -72,24 +65,29 @@ RUN cp /usr/share/zoneinfo/America/Indianapolis /etc/localtime
 RUN curl -o /etc/yum.repos.d/condor.repo https://research.cs.wisc.edu/htcondor/yum/repo.d/htcondor-stable-rhel7.repo
 RUN rpm --import https://research.cs.wisc.edu/htcondor/yum/RPM-GPG-KEY-HTCondor
 RUN yum -y install condor minicondor
-RUN sed -i 's/condor@/earthcube@/g' /etc/condor/config.d/00-minicondor
+RUN sed -i 's/condor@/geoedf@/g' /etc/condor/config.d/00-minicondor
 
-RUN usermod -a -G condor earthcube
+RUN usermod -a -G condor geoedf
 RUN chmod -R g+w /var/{lib,log,lock,run}/condor
 
-RUN chown -R earthcube /home/earthcube/
+RUN chown -R geoedf /home/geoedf/
 
-RUN echo -e "condor_master > /dev/null 2>&1" >> /home/earthcube/.bashrc
+RUN echo -e "condor_master > /dev/null 2>&1" >> /home/geoedf/.bashrc
 
 # User setup
-USER earthcube
+USER geoedf
 
-WORKDIR /home/earthcube
+WORKDIR /home/geoedf
+
+# install BOSCO
+RUN curl -o condor.tar.gz https://research.cs.wisc.edu/htcondor/tarball/9.1/9.2.0/release/condor-9.2.0-x86_64_CentOS7-stripped.tar.gz && tar -xf condor.tar.gz
+
+RUN cd condor-9.2.0-1-x86_64_CentOS7-stripped && ./bosco_install
 
 # Set up config for ensemble manager
-RUN mkdir /home/earthcube/.pegasus \
-    && echo -e "#!/usr/bin/env python3\nUSERNAME='earthcube'\nPASSWORD='earthcube'\n" >> /home/earthcube/.pegasus/service.py \
-    && chmod u+x /home/earthcube/.pegasus/service.py
+RUN mkdir /home/geoedf/.pegasus \
+    && echo -e "#!/usr/bin/env python3\nUSERNAME='geoedf'\nPASSWORD='geoedf'\n" >> /home/geoedf/.pegasus/service.py \
+    && chmod u+x /home/geoedf/.pegasus/service.py
 
 # Get Pegasus 
 # ver. is master from Aug 31
@@ -100,20 +98,15 @@ RUN git clone https://github.com/pegasus-isi/pegasus.git \
     && cd dist \
     && mv $(find . -type d -name "pegasus-*") pegasus
 
-ENV PATH /home/earthcube/pegasus/dist/pegasus/bin:$HOME/.pyenv/bin:$PATH:/usr/lib64/mpich/bin
-ENV PYTHONPATH /home/earthcube/pegasus/dist/pegasus/lib64/python3.6/site-packages
+ENV PATH /home/geoedf/pegasus/dist/pegasus/bin:$HOME/.pyenv/bin:$PATH:/usr/lib64/mpich/bin
+ENV PYTHONPATH /home/geoedf/pegasus/dist/pegasus/lib64/python3.6/site-packages
 
 # Set up pegasus database
-RUN /home/earthcube/pegasus/dist/pegasus/bin/pegasus-db-admin create
+RUN /home/geoedf/pegasus/dist/pegasus/bin/pegasus-db-admin create
 
-# Set Kernel for Jupyter (exposes PATH and PYTHONPATH for use when terminal from jupyter is used)
-ADD ./config/kernel.json /usr/local/share/jupyter/kernels/python3/kernel.json
-RUN echo -e "export PATH=/home/earthcube/pegasus/dist/pegasus/bin:/home/earthcube/.pyenv/bin:\$PATH:/usr/lib64/mpich/bin" >> /home/earthcube/.bashrc
-RUN echo -e "export PYTHONPATH=/home/earthcube/pegasus/dist/pegasus/lib64/python3.6/site-packages" >> /home/earthcube/.bashrc
-
-# Set notebook password to 'earthcube'. This pw will be used instead of token authentication
-RUN mkdir /home/earthcube/.jupyter \ 
-    && echo "{ \"NotebookApp\": { \"password\": \"sha1:0B7D9AD9630809EA27929C6C2157844742354EA9\" } }" >> /home/earthcube/.jupyter/jupyter_notebook_config.json
+# Expose PATH and PYTHONPATH environment variables
+RUN echo -e "export PATH=/home/geoedf/pegasus/dist/pegasus/bin:/home/geoedf/.pyenv/bin:\$PATH:/usr/lib64/mpich/bin" >> /home/geoedf/.bashrc
+RUN echo -e "export PYTHONPATH=/home/geoedf/pegasus/dist/pegasus/lib64/python3.6/site-packages" >> /home/geoedf/.bashrc
 
 # ------------------------------
 # GeoEDF specific section begins
@@ -138,43 +131,33 @@ RUN cd /tmp && \
 # create folders to store job data and local Singularity images
 
 RUN mkdir /data && \
-    chown earthcube: /data && \
+    chown geoedf: /data && \
     chmod 777 /data && \
     mkdir /images && \
-    chown earthcube: /images && \
+    chown geoedf: /images && \
     chmod 755 /images
 
 # create remote registry configuration for Singularity 
 
-RUN mkdir /home/earthcube/.singularity 
+RUN mkdir /home/geoedf/.singularity 
 
-ADD ./config/remote.yaml /home/earthcube/.singularity/
+ADD ./config/remote.yaml /home/geoedf/.singularity/
 
-RUN chown -R earthcube: /home/earthcube/.singularity && \
-    chmod 600 /home/earthcube/.singularity/remote.yaml
+RUN chown -R geoedf: /home/geoedf/.singularity && \
+    chmod 600 /home/geoedf/.singularity/remote.yaml
 
 RUN python3 -m pip install -U pip
 
-USER earthcube
-
-RUN pip3 install geopandas folium
+USER geoedf
 
 # ------------------------------
 # GeoEDF specific section ends
 # ------------------------------
 
-RUN mkdir /home/earthcube/geoedf
+WORKDIR /home/geoedf/
 
-ADD --chown=earthcube:earthcube ./geoedf /home/earthcube/geoedf
+ADD --chown=geoedf:geoedf runservice.sh /home/geoedf/
 
-WORKDIR /home/earthcube/geoedf
+RUN chmod +x runservice.sh
 
-COPY --chown=earthcube:earthcube runjupyter.sh /home/earthcube/
-
-RUN chmod +x /home/earthcube/runjupyter.sh
-
-# wrapdocker required for nested docker containers
-#ENTRYPOINT ["sudo", "/usr/local/bin/wrapdocker"]
-#CMD ["su", "-", "earthcube", "-c", "jupyter notebook --notebook-dir=/home/earthcube/geoedf --NotebookApp.token='' --NotebookApp.password='' --port=8888 --no-browser --ip=0.0.0.0 --allow-root"] 
-#ENTRYPOINT ["jupyter", "notebook", "--notebook-dir=/home/earthcube/geoedf", "--NotebookApp.token=''", "--NotebookApp.password=''", "--port=8888", "--no-browser", "--ip=0.0.0.0", "--allow-root"]
-CMD ["/home/earthcube/runjupyter.sh"]
+CMD ["/home/geoedf/runservice.sh"]
